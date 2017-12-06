@@ -26,13 +26,16 @@ LOCAL_SHARED_LIBRARIES := \
 			libsync \
 			libutils \
 			libhardware_legacy
-						
+
+LOCAL_PROPRIETARY_MODULE := true
+
 LOCAL_SRC_FILES := \
 			hdmi_cec.cpp \
 			hdmicec_event.cpp
-				
-LOCAL_MODULE := hdmi_cec.$(TARGET_BOARD_HARDWARE)
+
+
+LOCAL_MODULE:= hdmi_cec.$(TARGET_BOARD_PLATFORM)
 LOCAL_CFLAGS:= -DLOG_TAG=\"hdmicec\"
-LOCAL_CFLAGS += -fpermissive
 LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 include $(BUILD_SHARED_LIBRARY)
