@@ -137,16 +137,6 @@ struct cec_log_addrs {
 	__u8 features[CEC_MAX_LOG_ADDRS][12];
 };
 
-//#define HDMI_CEC_MAGIC 'N'
-//#define HDMI_IOCTL_CECSEND   _IOW(HDMI_CEC_MAGIC, 0 ,struct cec_framedata)
-//#define HDMI_IOCTL_CECENAB   _IOW(HDMI_CEC_MAGIC, 1, int)
-//#define HDMI_IOCTL_CECPHY    _IOR(HDMI_CEC_MAGIC, 2, int)
-//#define HDMI_IOCTL_CECLOGIC  _IOR(HDMI_CEC_MAGIC, 3, int)
-//#define HDMI_IOCTL_CECREAD   _IOR(HDMI_CEC_MAGIC, 4, struct cec_framedata)
-//#define HDMI_IOCTL_CECSETLA  _IOW(HDMI_CEC_MAGIC, 5, int)
-//#define HDMI_IOCTL_CECCLEARLA  _IOW(HDMI_CEC_MAGIC, 6, int)
-//#define HDMI_IOCTL_CECWAKESTATE  _IOR(HDMI_CEC_MAGIC, 7, int)
-
 /* ioctls */
 
 /* Adapter capabilities */
@@ -202,6 +192,7 @@ struct hdmi_cec_context_t {
 	struct hdmi_port_info port;
 	int fd;
 	bool enable;
+	bool system_control;
 };
 
 void init_uevent_thread(hdmi_cec_context_t* ctx);

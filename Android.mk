@@ -15,8 +15,6 @@
 
 LOCAL_PATH := $(call my-dir)
 
-# HAL module implemenation stored in
-# hw/<OVERLAY_HARDWARE_MODULE_ID>.<ro.product.board>.so
 include $(CLEAR_VARS)
 
 LOCAL_MODULE_RELATIVE_PATH := hw
@@ -36,6 +34,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_MODULE:= hdmi_cec.$(TARGET_BOARD_PLATFORM)
 LOCAL_CFLAGS:= -DLOG_TAG=\"hdmicec\"
+LOCAL_CFLAGS += -fpermissive
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 include $(BUILD_SHARED_LIBRARY)

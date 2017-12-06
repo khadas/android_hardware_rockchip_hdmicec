@@ -38,14 +38,12 @@ static int validcecmessage(hdmi_event_t cec_event)
 	int ret = 0;
 
 	if (cec_event.cec.length > 15)
-		ret = 1;
+		ret = -E2BIG;
 	return ret;
 }
 
 static void *uevent_loop(void *param)
 {
-//	const int MAX_DATA = 64;
-//	static char vdata[MAX_DATA];
 	hdmi_cec_context_t * ctx = reinterpret_cast<hdmi_cec_context_t *>(param);
 	char thread_name[64] = HDMI_CEC_UEVENT_THREAD_NAME;
 	hdmi_event_t cec_event;
@@ -68,18 +66,17 @@ static void *uevent_loop(void *param)
 
 	while (true) {
 		int err = poll(&pfd[0], 1, 20);
-		
+
 		if (!err) {
 			continue;
-		} if(err > 0) {
-			if (!ctx->enable)
+		} else if(err > 0) {
+			if (!ctx->enable || !ctx->system_control)
 				continue;
 			ALOGI("poll revent:%02x\n", pfd[0].revents);
 			memset(&cec_event, 0, sizeof(hdmi_event_t));
-			ALOGI("poll happen\n");
 			if (pfd[0].revents & (POLLIN)) {
 				struct cec_msg cecframe;
-				
+
 				ALOGI("poll receive msg\n");
 				ret = ioctl(pfd[0].fd, CEC_RECEIVE, &cecframe);
 				if (!ret) {
@@ -94,10 +91,9 @@ static void *uevent_loop(void *param)
 							cec_event.cec.body [ret + 1] = cecframe.msg[ret + 2];
 						}
 						for (i = 0; i < cecframe.len; i++)
-							ALOGE("poll receive msg[%d]:%02x\n", i, cecframe.msg[i]);
+							ALOGI("poll receive msg[%d]:%02x\n", i, cecframe.msg[i]);
 						if (ctx->event_callback)
 							ctx->event_callback(&cec_event, ctx->cec_arg);
-						ALOGE("poll receive msg callback\n");
 					} else {
 						ALOGE("%s cec_event length > 15 ", __func__);
 					}
@@ -105,7 +101,7 @@ static void *uevent_loop(void *param)
 					ALOGE("%s hdmi cec read error", __FUNCTION__);
 				}
 			}
-			
+
 			if (pfd[0].revents & (POLLPRI)) {
 				int state = -1;
 				struct cec_event event;
@@ -144,7 +140,7 @@ void init_uevent_thread(hdmi_cec_context_t* ctx)
 {
 	pthread_t uevent_thread;
 	int ret;
-	
+
 	ALOGI("Initializing UEVENT Thread");
 	ret = pthread_create(&uevent_thread, NULL, uevent_loop, (void*) ctx);
 	if (ret) {
