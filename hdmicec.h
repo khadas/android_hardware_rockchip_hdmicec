@@ -51,6 +51,10 @@
 
 /* Events */
 
+/* event flags */
+#define CEC_EVENT_FL_INITIAL_STATE	(1 << 0)
+#define CEC_EVENT_FL_DROPPED_EVENTS	(1 << 1)
+
 /* Event that occurs when the adapter state changes */
 #define CEC_EVENT_STATE_CHANGE		1
 /*
@@ -193,6 +197,8 @@ struct hdmi_cec_context_t {
 	int fd;
 	bool enable;
 	bool system_control;
+	int phy_addr;
+	bool hotplug;
 };
 
 void init_uevent_thread(hdmi_cec_context_t* ctx);

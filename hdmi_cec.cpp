@@ -105,15 +105,13 @@ static int latype_to_devtype(int latype)
 	return devtype;
 }
 
-static int hdmi_cec_add_logical_address(const struct hdmi_cec_device* dev,
-					cec_logical_address_t addr)
+static int set_kernel_logical_address(struct hdmi_cec_context_t* ctx, cec_logical_address_t addr)
 {
 	int ret, la_type, dev_type;
 	int mode = CEC_MODE_INITIATOR | CEC_MODE_EXCL_FOLLOWER_PASSTHRU;
 	struct cec_log_addrs log_addr;
-	struct hdmi_cec_context_t* ctx = (struct hdmi_cec_context_t*)dev;
 
-	ALOGI("%s", __func__);
+	ALOGD("%s, logic addr:%02x\n", __func__, addr);
 
 	if (ctx->fd < 0) {
 		ALOGE("%s open error", __func__);
@@ -141,18 +139,19 @@ static int hdmi_cec_add_logical_address(const struct hdmi_cec_device* dev,
 	ret = ioctl(ctx->fd, CEC_ADAP_G_LOG_ADDRS, &log_addr);
 	if (ret) {
 		ALOGE("%s get logic address err ret:%d\n", __func__, ret);
-		return EINVAL;
+		return -EINVAL;
 	}
 
-	ALOGI("primary_device_type:%02x,log_addr_type:%02x\n",
-				log_addr.primary_device_type[0], log_addr.log_addr_type[0]);
-	if (log_addr.primary_device_type[0]) {
-		ALOGI("logi caddr is existing, not need to set logic addr\n");
+	ALOGI("primary_device_type:%02x,log_addr_type:%02x,log_addr[0]:%02x\n",
+	      log_addr.primary_device_type[0], log_addr.log_addr_type[0], log_addr.log_addr[0]);
+	if (log_addr.log_addr[0] != CEC_LOG_ADDR_INVALID && log_addr.log_addr[0]) {
+		ALOGD("LA is existing, not need to set logic addr\n");
 		return 0;
 	}
 
 	log_addr.cec_version = HDMI_CEC_VERSION;
 	log_addr.num_log_addrs = 1;
+	log_addr.log_addr[0] = addr;
 	log_addr.vendor_id = HDMI_CEC_VENDOR_ID;
 	log_addr.osd_name[0] = 'R';
 	log_addr.osd_name[1] = 'K';
@@ -168,10 +167,20 @@ static int hdmi_cec_add_logical_address(const struct hdmi_cec_device* dev,
 	return 0;
 }
 
+static int hdmi_cec_add_logical_address(const struct hdmi_cec_device* dev,
+					cec_logical_address_t addr)
+{
+
+	struct hdmi_cec_context_t* ctx = (struct hdmi_cec_context_t*)dev;
+
+	return set_kernel_logical_address(ctx, addr);
+}
+
 static void hdmi_cec_clear_logical_address(const struct hdmi_cec_device* dev)
 {
 	struct hdmi_cec_context_t* ctx = (struct hdmi_cec_context_t*)dev;
 	int ret;
+	struct cec_log_addrs log_addr;
 
 	ALOGI("%s", __func__);
 	if (ctx->fd < 0) {
@@ -179,35 +188,62 @@ static void hdmi_cec_clear_logical_address(const struct hdmi_cec_device* dev)
 		return;
 	}
 
-	ALOGI("%s end", __func__);
+	log_addr.num_log_addrs = 0;
+	ret = ioctl(ctx->fd, CEC_ADAP_S_LOG_ADDRS, &log_addr);
+	if (ret) {
+		ALOGE("%s set logic address err ret:%d\n", __func__, ret);
+		return;
+	}
 }
 
 static int hdmi_cec_get_physical_address(const struct hdmi_cec_device* dev, uint16_t* addr)
 {
 	struct hdmi_cec_context_t* ctx = (struct hdmi_cec_context_t*)dev;
-	int ret;
+	int ret, i;
 	uint16_t val = 0;
 
 	if (addr == NULL) {
-		ALOGI("%s addr is null", __func__);
+		ALOGE("%s addr is null", __func__);
 		return -ENXIO;
 	}
 
-	ALOGI("%s", __func__);
 	if (ctx->fd < 0) {
 		ALOGE("%s open error!", __func__);
 		return -ENOENT;
 	}
 
-	ret = ioctl(ctx->fd, CEC_ADAP_G_PHYS_ADDR, &val);
-	if (ret) {
-		ALOGE("CEC read physical addr error! ret:%d\n", ret);
-		return ret;
+	for (i = 0; i < 5; i++) {
+		ret = ioctl(ctx->fd, CEC_ADAP_G_PHYS_ADDR, &val);
+		if (ret) {
+			ALOGE("CEC read physical addr error! ret:%d\n", ret);
+			return ret;
+		}
+
+		if((val != 0xffff) && val) {
+			break;
+		}
+		usleep(20000);
 	}
+
+	if (i == 5) {
+		ALOGE("get phy addr err!:%x\n", val);
+		return -EINVAL;
+	}
+
 	*addr = val;
 	ALOGI("%s val = %x", __func__, val);
 
 	return 0;
+}
+
+static int hdmi_cec_is_connected(const struct hdmi_cec_device* dev, int port_id)
+{
+	struct hdmi_cec_context_t* ctx = (struct hdmi_cec_context_t*)dev;
+
+	if (ctx->hotplug)
+		return HDMI_CONNECTED;
+	else
+		return HDMI_NOT_CONNECTED;
 }
 
 static int hdmi_cec_send_message(const struct hdmi_cec_device* dev, const cec_message_t* message)
@@ -221,33 +257,73 @@ static int hdmi_cec_send_message(const struct hdmi_cec_device* dev, const cec_me
 		return -EPERM;
 	}
 
-	ALOGI("%s", __func__);
 	if (ctx->fd < 0) {
 		ALOGE("%s open error", __func__);
 		return -ENOENT;
 	}
 
+	if(!ctx->hotplug)
+		return -EPERM;
+
 	memset(&cecframe, 0, sizeof(struct cec_msg));
 	if (message->initiator == message->destination) {
-		ALOGI("kernel do the cec poll\n");
-		return HDMI_RESULT_NACK;
+		struct cec_log_addrs log_addr;
+
+		ret = ioctl(ctx->fd, CEC_ADAP_G_LOG_ADDRS, &log_addr);
+		if (ret) {
+			ALOGE("%s get logic address err ret:%d\n", __func__, ret);
+			return -EINVAL;
+		}
+
+		ALOGD("kernel logic addr:%02x, preferred logic addr:%02x",
+		      log_addr.log_addr[0], message->initiator);
+		if (log_addr.log_addr[0] != CEC_LOG_ADDR_INVALID && log_addr.log_addr[0]) {
+			ALOGI("kernel logaddr is existing\n");
+			if (log_addr.log_addr[0] == message->initiator) {
+				ALOGI("kernel logaddr is preferred logaddr\n");
+				return HDMI_RESULT_NACK;
+			} else {
+				ALOGI("preferred log addr is not kernel log addr\n");
+				return HDMI_RESULT_SUCCESS;
+			}
+		} else {
+			ALOGI("kernel logaddr is not existing\n");
+			if(!set_kernel_logical_address(ctx, message->initiator)) {
+				for (i = 0; i < 5; i++) {
+					if (!ctx->phy_addr || ctx->phy_addr == 0xffff) {
+						ALOGE("phy addr not ready\n");
+						usleep(200000);
+					} else {
+						break;
+					}
+				}
+			}
+			if (i == 5) {
+				ALOGE("can't make kernel addr done\n");
+				return HDMI_RESULT_FAIL;
+			} else {
+
+				return HDMI_RESULT_NACK;
+			}
+		}
 	}
 
 	cecframe.msg[0] = (message->initiator << 4) | message->destination;
 	cecframe.len = message->length + 1;
 	cecframe.msg[1] = message->body[0];
 	ALOGI("send msg LEN:%d,opcode:%02x,addr:%02x\n",
-				cecframe.len ,cecframe.msg[1],cecframe.msg[0]);
+	      cecframe.len ,cecframe.msg[1],cecframe.msg[0]);
 	if (cecframe.len > 16)
 		cecframe.len = 0;
 	for (ret = 0; ret < cecframe.len; ret++)
 		cecframe.msg[ret + 2] = message->body[ret + 1];
 	if (cecframe.msg[1] == 0x90)
 		cecframe.msg[2] = 0;
+
 	ret = ioctl(ctx->fd, CEC_TRANSMIT, &cecframe);
 
  	if (ret < 0) {
- 		ALOGE("ioctl err\n");
+ 		ALOGE("ioctl err:%d\n", ret);
 		return HDMI_RESULT_FAIL;
 	}
 	if (cecframe.tx_status & CEC_TX_STATUS_NACK) {
@@ -302,11 +378,13 @@ static void hdmi_cec_get_port_info(const struct hdmi_cec_device* dev,
 	support = 0;
 
 	ALOGI("%s", __func__);
-	if (ctx->fd > 0){
+	if (ctx->fd > 0) {
 		ret = ioctl(ctx->fd, CEC_ADAP_G_PHYS_ADDR, &val);
-		if (ret)
-			ALOGE("%s get port phy addr\n", __func__);
-		support = 1;
+		if (!ret) {
+			ALOGE("%s get port phy addr %x\n", __func__, val);
+			if (val && (val != 0xffff))
+				support = 1;
+		}
 	} else {
 		ALOGE("%s open HDMI_DEV_PATH error", __FUNCTION__);
 	}
@@ -317,7 +395,6 @@ static void hdmi_cec_get_port_info(const struct hdmi_cec_device* dev,
 	list[0]->arc_supported = 0;
 	list[0]->physical_address = val;
 	*total = 1;
-	ALOGI("%s end", __func__);
 }
 
 static void hdmi_cec_set_option(const struct hdmi_cec_device* dev, int flag, int value)
@@ -330,7 +407,7 @@ static void hdmi_cec_set_option(const struct hdmi_cec_device* dev, int flag, int
 		return;
 	}
 
-  switch (flag) {
+	switch (flag) {
 		case HDMI_OPTION_WAKEUP:
 			ALOGI("%s: Wakeup: value: %d", __FUNCTION__, value);
 			break;
@@ -340,10 +417,10 @@ static void hdmi_cec_set_option(const struct hdmi_cec_device* dev, int flag, int
 			break;
 		case HDMI_OPTION_SYSTEM_CEC_CONTROL:
 			ALOGI("%s: system_control: value: %d",
-                  __FUNCTION__, value);
+			      __FUNCTION__, value);
 			ctx->system_control = !!value;
 			break;
-  }
+	}
 }
 
 static void hdmi_cec_set_audio_return_channel(const struct hdmi_cec_device* dev, int port_id, int flag)
@@ -351,36 +428,6 @@ static void hdmi_cec_set_audio_return_channel(const struct hdmi_cec_device* dev,
 	struct hdmi_cec_context_t* ctx = (struct hdmi_cec_context_t*)dev;
 
 	ALOGI("%s %d", __func__, port_id);
-}
-
-static int hdmi_cec_is_connected(const struct hdmi_cec_device* dev, int port_id)
-{
-	struct hdmi_cec_context_t* ctx = (struct hdmi_cec_context_t*)dev;
-	int ret, fd;
-	char statebuf[20];
-
-	ALOGI("%s", __func__);
-	memset(statebuf, 0, sizeof(statebuf));
-	fd = open(HDMI_STATE_PATH, O_RDONLY);
-	if (fd < 0)
-		return -1;
-	ret = read(fd, statebuf, sizeof(statebuf));
-	close(fd);
-	if (ret < 0) {
-		ALOGE("read hdmi state err\n");
-		return -1;
-	}
-
-	if (!strcmp(statebuf, "connected")) {
-		ALOGI("%s HDMI_CONNECTED\n", __func__);
-		return HDMI_CONNECTED;
-	} else if (!strcmp(statebuf, "disconnected")) {
-		ALOGI("%s HDMI_NOT_CONNECTED\n", __func__);
-		return HDMI_NOT_CONNECTED;
-	}
-
-	ALOGE("%s can't get hdmi status HDMI_NOT_CONNECTED\n", __func__);
-	return HDMI_NOT_CONNECTED;
 }
 
 static int hdmi_cec_device_close(struct hw_device_t *dev)
@@ -392,6 +439,7 @@ static int hdmi_cec_device_close(struct hw_device_t *dev)
 		free(ctx);
 	}
 	ctx->enable = false;
+	ctx->phy_addr = 0;
 
 	return 0;
 }
@@ -401,7 +449,6 @@ static int hdmi_cec_device_open(const struct hw_module_t* module, const char* na
 {
 	if (strcmp(name, HDMI_CEC_HARDWARE_INTERFACE))
 		return -EINVAL;
-
 
 	struct hdmi_cec_context_t *dev;
 	dev = (hdmi_cec_context_t*)malloc(sizeof(*dev));
@@ -428,6 +475,7 @@ static int hdmi_cec_device_open(const struct hw_module_t* module, const char* na
 	dev->device.set_option = hdmi_cec_set_option;
 	dev->device.set_audio_return_channel = hdmi_cec_set_audio_return_channel;
 	dev->device.is_connected = hdmi_cec_is_connected;
+	dev->phy_addr = 0;
 	dev->fd = open(HDMI_DEV_PATH,O_RDWR,0);
 	ALOGE(HDMI_DEV_PATH);
 	ALOGE("\n");
