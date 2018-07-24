@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <hdmicec.h>
+#include <unistd.h>
 #include <cutils/properties.h>
 
 static int hdmi_cec_device_open(const struct hw_module_t* module, const char* name,
