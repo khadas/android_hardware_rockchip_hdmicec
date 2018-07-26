@@ -30,6 +30,8 @@
 #include <hardware/hdmi_cec.h>
 #include <errno.h>
 #include <hdmicec.h>
+#include <unistd.h>
+#include <pthread.h>
 
 #define HDMI_CEC_UEVENT_THREAD_NAME "HdmiCecThread"
 
