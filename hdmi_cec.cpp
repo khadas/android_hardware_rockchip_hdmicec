@@ -485,7 +485,7 @@ static int hdmi_cec_device_open(const struct hw_module_t* module, const char* na
 		ALOGE("cec %s\n", strerror(errno));
 	}
 	ALOGI("%s dev->fd = %d", __func__, dev->fd);
-	property_set("sys.hdmicec.version",HDMI_CEC_HAL_VERSION);
+	property_set("vendor.sys.hdmicec.version",HDMI_CEC_HAL_VERSION);
 	*device = &dev->device.common;
 	init_uevent_thread(dev);
 
