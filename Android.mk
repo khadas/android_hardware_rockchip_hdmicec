@@ -33,8 +33,8 @@ LOCAL_SRC_FILES := \
 			hdmi_cec.cpp \
 			hdmicec_event.cpp
 
-LOCAL_C_INCLUDES : = \
-   bionic/libc/include 
+#LOCAL_C_INCLUDES : = \
+#   bionic/libc/include 
 
 LOCAL_MODULE:= hdmi_cec.$(TARGET_BOARD_PLATFORM)
 LOCAL_CFLAGS:= -DLOG_TAG=\"hdmicec\"
