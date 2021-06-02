@@ -117,6 +117,7 @@ static void *uevent_loop(void *param)
 		pfd[0].events = POLLIN | POLLRDNORM | POLLPRI;
 
 	while (true) {
+                usleep(1000);
 		int err = poll(&pfd[0], 1, 20);
 
 		if (!err) {
