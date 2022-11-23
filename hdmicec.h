@@ -185,9 +185,17 @@ struct cec_log_addrs {
 #define CEC_G_MODE		_IOR('a',  8, __u32)
 #define CEC_S_MODE		_IOW('a',  9, __u32)
 
+/* cec wakeup ioctl */
+/* cec standby status enable */
+#define CEC_STANDBY             _IOW('a', 10, bool)
+/* cec function enable */
+#define CEC_FUNC_EN             _IOW('a', 11, int)
+
 
 #define HDMI_STATE_PATH   "sys/class/drm/card0-HDMI-A-1/status"
-#define HDMI_DEV_PATH   "dev/cec0"
+#define HDMI_DEV_PATH   "/dev/cec0"
+#define HDMI_WAKE_PATH  "/dev/rk_cec"
+
 struct hdmi_cec_context_t {
     hdmi_cec_device_t device;
     /* our private state goes below here */
@@ -195,6 +203,7 @@ struct hdmi_cec_context_t {
 	void* cec_arg;
 	struct hdmi_port_info port;
 	int fd;
+	int en_mask;
 	bool enable;
 	bool system_control;
 	int phy_addr;
